@@ -173,7 +173,7 @@ const INITIAL_PRODUCTS = [
     description: "Batagor renyah disajikan dengan saus kacang gurih.",
     category: "extra",
     image: "assets/images/batagor.jpg",
-    price: 55,
+    price: 60,
     stock: 30
   },
   {
