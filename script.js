@@ -20,8 +20,8 @@ const INITIAL_PRODUCTS = [
     category: "ayam",
     image: "assets/images/ayam-bakar.jpeg",
     variants: [
-      { name: "L", price: 70, stock: 20 },
-      { name: "XL", price: 85, stock: 15 }
+      { name: "L", price: 65, stock: 20 },
+      { name: "XL", price: 75, stock: 15 }
     ]
   },
   {
@@ -31,8 +31,8 @@ const INITIAL_PRODUCTS = [
     category: "ayam",
     image: "assets/images/ayam-bakar-kacang.jpeg",
     variants: [
-      { name: "L", price: 70, stock: 20 },
-      { name: "XL", price: 85, stock: 15 }
+      { name: "L", price: 65, stock: 20 },
+      { name: "XL", price: 75, stock: 15 }
     ]
   },
   {
@@ -42,8 +42,8 @@ const INITIAL_PRODUCTS = [
     category: "ayam",
     image: "assets/images/ayam-bumbu-hitam.jpeg",
     variants: [
-      { name: "L", price: 70, stock: 20 },
-      { name: "XL", price: 85, stock: 15 }
+      { name: "L", price: 65, stock: 20 },
+      { name: "XL", price: 75, stock: 15 }
     ]
   },
   {
@@ -53,19 +53,19 @@ const INITIAL_PRODUCTS = [
     category: "ayam",
     image: "assets/images/ayam-penyet.jpg",
     variants: [
-      { name: "L", price: 70, stock: 20 },
-      { name: "XL", price: 85, stock: 15 }
+      { name: "L", price: 65, stock: 20 },
+      { name: "XL", price: 75, stock: 15 }
     ]
   },
   {
     id: 5,
-    name: "Ayam Goreng",
+    name: "Ayam Goreng Bawang Putih",
     description: "Ayam goreng rempah renyah gurih khas nusantara.",
     category: "ayam",
     image: "assets/images/ayam-goreng.jpeg",
     variants: [
       { name: "L", price: 65, stock: 25 },
-      { name: "XL", price: 80, stock: 20 }
+      { name: "XL", price: 75, stock: 20 }
     ]
   },
   {
