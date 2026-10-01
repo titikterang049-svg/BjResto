@@ -21,7 +21,7 @@ const INITIAL_PRODUCTS = [
     image: "assets/images/ayam-bakar.jpeg",
     variants: [
       { name: "M", price: 65, stock: 20 },
-      { name: "L", price: 75, stock: 15 }
+      { name: "L", price: 75, stock: 15 },
       { name: "XL", price: 90, stock: 15 }
     ]
   },
@@ -33,7 +33,7 @@ const INITIAL_PRODUCTS = [
     image: "assets/images/ayam-bakar-kacang.jpeg",
     variants: [
       { name: "M", price: 65, stock: 20 },
-      { name: "L", price: 75, stock: 15 }
+      { name: "L", price: 75, stock: 15 },
       { name: "XL", price: 90, stock: 15 }
     ]
   },
@@ -45,7 +45,7 @@ const INITIAL_PRODUCTS = [
     image: "assets/images/ayam-bumbu-hitam.jpeg",
     variants: [
       { name: "M", price: 65, stock: 20 },
-      { name: "L", price: 75, stock: 15 }
+      { name: "L", price: 75, stock: 15 },
       { name: "XL", price: 90, stock: 15 }
     ]
   },
@@ -57,7 +57,7 @@ const INITIAL_PRODUCTS = [
     image: "assets/images/ayam-penyet.jpg",
     variants: [
       { name: "M", price: 65, stock: 20 },
-      { name: "L", price: 75, stock: 15 }
+      { name: "L", price: 75, stock: 15 },
       { name: "XL", price: 90, stock: 15 }
     ]
   },
@@ -69,7 +69,7 @@ const INITIAL_PRODUCTS = [
     image: "assets/images/ayam-goreng.jpeg",
     variants: [
       { name: "M", price: 65, stock: 25 },
-      { name: "L", price: 75, stock: 20 }
+      { name: "L", price: 75, stock: 20 },
       { name: "XL", price: 90, stock: 15 }
     ]
   },
