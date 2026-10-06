@@ -1,12 +1,18 @@
 /* ==========================================================================
    BJ RESTO - SELF ORDERING SYSTEM SCRIPT WITH ADMIN STOCK MANAGEMENT
+   Versi: stok bersama via Supabase (realtime)
    ========================================================================== */
 
 /**
- * 1. KONFIGURASI ADMIN
+ * 1. KONFIGURASI
  */
 const ADMIN_WHATSAPP = "6285188428223";
-const ADMIN_PIN = "BERKAHJAYA02"; // Password Admin BJ Resto
+
+// Isi dari Supabase: Project Settings > API
+const SUPABASE_URL = "https://XXXX.supabase.co";
+const SUPABASE_ANON_KEY = "ISI_ANON_PUBLIC_KEY"; // pakai anon key, BUKAN service_role
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let adminPinValue = ""; // PIN hanya disimpan di memori setelah login berhasil
 
 /**
  * 2. DATA PRODUK (DESAIN SESUAI DAFTAR MENU BJ RESTO)
@@ -414,47 +420,75 @@ const adminStockList = document.getElementById("admin-stock-list");
 const toastEl = document.getElementById("toast");
 
 /* --------------------------------------------------------------------------
-   STORAGE MANAGEMENT (LOCALSTORAGE)
+   STOCK MANAGEMENT (SUPABASE - DIBAGI KE SEMUA HP)
    -------------------------------------------------------------------------- */
 
-function loadStockFromStorage() {
-  const storedStock = localStorage.getItem("bj_resto_stock_data");
-  if (storedStock) {
-    try {
-      const parsedStock = JSON.parse(storedStock);
-      // Map loaded stock onto PRODUCTS structure
-      parsedStock.forEach(savedItem => {
-        const product = PRODUCTS.find(p => p.id === savedItem.id);
-        if (product) {
-          if (product.variants && savedItem.variants) {
-            product.variants.forEach(v => {
-              const savedV = savedItem.variants.find(sv => sv.name === v.name);
-              if (savedV) v.stock = savedV.stock;
-            });
-          } else if (typeof savedItem.stock === 'number') {
-            product.stock = savedItem.stock;
-          }
-        }
-      });
-    } catch (e) {
-      console.error("Gagal memuat stok dari storage:", e);
-    }
+/**
+ * Terapkan satu baris data stok dari database ke PRODUCTS
+ */
+function applyStockRow(row) {
+  if (!row || row.product_id === undefined) return;
+  const p = PRODUCTS.find(x => x.id === row.product_id);
+  if (!p) return;
+
+  if (p.variants && p.variants.length > 0) {
+    const v = p.variants.find(item => item.name === row.variant);
+    if (v) v.stock = row.stock;
+  } else {
+    p.stock = row.stock;
   }
 }
 
-function saveStockToStorage() {
-  const stockToSave = PRODUCTS.map(p => {
-    if (p.variants) {
-      return {
-        id: p.id,
-        variants: p.variants.map(v => ({ name: v.name, stock: v.stock }))
-      };
-    } else {
-      return { id: p.id, stock: p.stock };
+/**
+ * Ambil semua stok dari Supabase (dipakai saat halaman dibuka)
+ */
+async function loadStockFromDB() {
+  try {
+    const { data, error } = await db.from("menu_stock").select("*");
+    if (error) {
+      console.error("Gagal memuat stok:", error.message);
+      return;
     }
-  });
-  localStorage.setItem("bj_resto_stock_data", JSON.stringify(stockToSave));
+    data.forEach(applyStockRow);
+  } catch (e) {
+    console.error("Gagal terhubung ke database:", e);
+  }
 }
+
+/**
+ * Dengarkan perubahan stok secara realtime dari HP lain
+ */
+function listenStockRealtime() {
+  db.channel("stock-live")
+    .on("postgres_changes", { event: "*", schema: "public", table: "menu_stock" }, payload => {
+      applyStockRow(payload.new);
+      renderProducts();
+      if (isAdminLoggedIn && !adminStockModal.classList.contains("hidden")) {
+        renderAdminStockModal();
+      }
+    })
+    .subscribe();
+}
+
+/**
+ * Kirim stok terbaru satu produk/varian ke database (hanya admin dengan PIN benar)
+ */
+async function pushStock(productId, variantName) {
+  const stock = getAvailableStock(productId, variantName);
+  const { error } = await db.rpc("admin_set_stock", {
+    p_pin: adminPinValue,
+    p_product_id: productId,
+    p_variant: variantName || "",
+    p_stock: stock
+  });
+  if (error) {
+    showToast("⚠️ Gagal menyimpan stok: " + error.message);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   CART STORAGE (LOCALSTORAGE - KERANJANG MILIK MASING-MASING PELANGGAN)
+   -------------------------------------------------------------------------- */
 
 function loadCartFromStorage() {
   const storedCart = localStorage.getItem("bj_resto_cart_data");
@@ -1018,9 +1052,17 @@ function closeAdminLoginModal() {
   document.body.style.overflow = "";
 }
 
-function authenticateAdmin() {
+/**
+ * Login admin: PIN dicek oleh Supabase (tidak ada PIN di kode)
+ */
+async function authenticateAdmin() {
   const enteredPin = adminPinInput.value.trim();
-  if (enteredPin === ADMIN_PIN) {
+  if (!enteredPin) return;
+
+  const { data, error } = await db.rpc("admin_check_pin", { p_pin: enteredPin });
+
+  if (!error && data === true) {
+    adminPinValue = enteredPin;
     isAdminLoggedIn = true;
     adminPanelBtn.classList.add("admin-active");
     adminPanelBtn.textContent = "⚙️ Admin Mode";
@@ -1057,7 +1099,7 @@ function updateVariantStock(productId, variantName, delta) {
     product.stock = Math.max(0, (product.stock || 0) + delta);
   }
 
-  saveStockToStorage();
+  pushStock(productId, variantName);
   renderAdminStockModal();
   renderProducts();
 }
@@ -1075,7 +1117,7 @@ function setVariantStock(productId, variantName, newStockVal) {
     product.stock = val;
   }
 
-  saveStockToStorage();
+  pushStock(productId, variantName);
   renderProducts();
 }
 
@@ -1092,19 +1134,29 @@ function toggleVariantAvailability(productId, variantName) {
     product.stock = product.stock > 0 ? 0 : 20;
   }
 
-  saveStockToStorage();
+  pushStock(productId, variantName);
   renderAdminStockModal();
   renderProducts();
 }
 
-function resetAllStockToDefault() {
-  if (confirm("Apakah Anda yakin ingin mengembalikan semua stok ke jumlah default (20)?")) {
-    PRODUCTS = JSON.parse(JSON.stringify(INITIAL_PRODUCTS));
-    saveStockToStorage();
-    renderAdminStockModal();
-    renderProducts();
-    showToast("🔄 Stok berhasil direset ke default!");
+async function resetAllStockToDefault() {
+  if (!confirm("Apakah Anda yakin ingin mengembalikan semua stok ke jumlah awal (default)?")) return;
+
+  PRODUCTS = JSON.parse(JSON.stringify(INITIAL_PRODUCTS));
+
+  for (const p of PRODUCTS) {
+    if (p.variants && p.variants.length > 0) {
+      for (const v of p.variants) {
+        await pushStock(p.id, v.name);
+      }
+    } else {
+      await pushStock(p.id, "");
+    }
   }
+
+  renderAdminStockModal();
+  renderProducts();
+  showToast("🔄 Stok berhasil direset ke default!");
 }
 
 function renderAdminStockModal() {
@@ -1205,14 +1257,15 @@ function renderAdminStockModal() {
    EVENT LISTENERS & INITIALIZATION
    -------------------------------------------------------------------------- */
 
-document.addEventListener("DOMContentLoaded", () => {
-  // Load data dari localStorage
-  loadStockFromStorage();
+document.addEventListener("DOMContentLoaded", async () => {
+  // Tampilkan menu dulu (stok default), lalu perbarui dengan data dari database
   loadCartFromStorage();
-
-  // Render awal produk & UI keranjang
   renderProducts();
   updateCartUI();
+
+  await loadStockFromDB();
+  renderProducts();
+  listenStockRealtime();
 
   // Event listener Kategori Menu
   categoryButtons.forEach(button => {
