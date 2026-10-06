@@ -147,7 +147,10 @@ const INITIAL_PRODUCTS = [
     category: "seafood",
     image: "assets/images/ikan-goreng.jpg",
     price: 75,
-    stock: 20
+    variants: [
+      { name: "L", price: 80, stock: 20 },
+      { name: "XL", price: 90, stock: 15 }
+    ]
   },
   {
     id: 12,
@@ -156,7 +159,10 @@ const INITIAL_PRODUCTS = [
     category: "seafood",
     image: "assets/images/ikan-bakar.jpeg",
     price: 80,
-    stock: 20
+    variants: [
+      { name: "L", price: 80, stock: 20 },
+      { name: "XL", price: 90, stock: 15 }
+    ]
   },
   {
     id: 13,
@@ -165,7 +171,10 @@ const INITIAL_PRODUCTS = [
     category: "seafood",
     image: "assets/images/ikan-penyet.png",
     price: 80,
-    stock: 20
+   variants: [
+      { name: "L", price: 80, stock: 20 },
+      { name: "XL", price: 90, stock: 15 }
+    ]
   },
   {
     id: 14,
