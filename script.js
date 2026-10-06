@@ -1,6 +1,6 @@
 /* ==========================================================================
    BJ RESTO - SELF ORDERING SYSTEM SCRIPT WITH ADMIN STOCK MANAGEMENT
-   Versi: stok bersama via Supabase (realtime)
+   Versi: stok bersama via Supabase (realtime) + stok berkurang otomatis
    ========================================================================== */
 
 /**
@@ -171,7 +171,7 @@ const INITIAL_PRODUCTS = [
     category: "seafood",
     image: "assets/images/ikan-penyet.png",
     price: 80,
-   variants: [
+    variants: [
       { name: "L", price: 80, stock: 20 },
       { name: "XL", price: 90, stock: 15 }
     ]
@@ -365,6 +365,7 @@ let isAdminLoggedIn = false;
 let adminSearchQuery = "";
 let currentOrderType = "dine_in"; // 'dine_in', 'take_away', 'delivery'
 let currentDeliveryArea = "darrasah"; // 'darrasah', 'gamaliah', 'buuts'
+let isSendingOrder = false;
 
 // DOM Elements
 const productGrid = document.getElementById("product-grid");
@@ -480,19 +481,68 @@ function listenStockRealtime() {
 }
 
 /**
- * Kirim stok terbaru satu produk/varian ke database (hanya admin dengan PIN benar)
+ * Tangani error dari fungsi admin (PIN salah / terkunci / error lain).
+ * Return true jika ada masalah.
+ */
+function handleAdminError(error) {
+  if (!error) return false;
+  if (error.message && error.message.includes("TERLALU_BANYAK_PERCOBAAN")) {
+    showToast("⚠️ Terlalu banyak percobaan PIN salah. Coba lagi beberapa menit lagi.");
+  } else {
+    showToast("⚠️ Gagal menyimpan stok: " + error.message);
+  }
+  return true;
+}
+
+/**
+ * Kirim nilai stok absolut satu produk/varian ke database
  */
 async function pushStock(productId, variantName) {
   const stock = getAvailableStock(productId, variantName);
-  const { error } = await db.rpc("admin_set_stock", {
+  const { data, error } = await db.rpc("admin_set_stock", {
     p_pin: adminPinValue,
     p_product_id: productId,
     p_variant: variantName || "",
     p_stock: stock
   });
-  if (error) {
-    showToast("⚠️ Gagal menyimpan stok: " + error.message);
+  if (handleAdminError(error)) return false;
+  if (data !== true) {
+    showToast("⚠️ PIN admin tidak valid. Silakan login ulang.");
+    return false;
   }
+  return true;
+}
+
+/**
+ * Tambah/kurangi stok dengan selisih langsung di database
+ * (aman jika bersamaan dengan pesanan pelanggan)
+ */
+async function adjustStockInDB(productId, variantName, delta) {
+  const { data, error } = await db.rpc("admin_adjust_stock", {
+    p_pin: adminPinValue,
+    p_product_id: productId,
+    p_variant: variantName || "",
+    p_delta: delta
+  });
+  if (handleAdminError(error)) return null;
+  if (data === -1) {
+    showToast("⚠️ PIN admin tidak valid. Silakan login ulang.");
+    return null;
+  }
+  return data; // stok baru
+}
+
+/**
+ * Kurangi stok di database untuk seluruh isi keranjang (atomik)
+ */
+async function reserveStockForOrder() {
+  const items = cart.map(i => ({
+    product_id: i.id,
+    variant: i.variant || "",
+    qty: i.qty
+  }));
+  const { error } = await db.rpc("place_order", { p_items: items });
+  return error || null;
 }
 
 /* --------------------------------------------------------------------------
@@ -955,8 +1005,11 @@ function closeCheckoutModal() {
 
 /**
  * Format & Kirim Pesanan ke WhatsApp Admin
+ * Stok dikurangi otomatis di database sebelum WhatsApp dibuka.
  */
-function sendOrderToWhatsApp() {
+async function sendOrderToWhatsApp() {
+  if (isSendingOrder) return;
+
   const customerName = customerNameInput.value.trim();
 
   if (!customerName) {
@@ -1028,16 +1081,61 @@ ${currentOrderType === "delivery" ? `🛵 *Biaya Delivery:* ${formatEGP(delivery
 
 Terima kasih.`;
 
-  // Encode message agar aman dimasukkan ke URL
-  const encodedText = encodeURIComponent(whatsappMessage);
+  const waUrl = `https://wa.me/${ADMIN_WHATSAPP}?text=${encodeURIComponent(whatsappMessage)}`;
 
-  // URL WhatsApp Click to Chat
-  const waUrl = `https://wa.me/${ADMIN_WHATSAPP}?text=${encodedText}`;
+  // Buka tab dulu (sebelum await) supaya tidak diblokir popup blocker di HP
+  const waWindow = window.open("", "_blank");
 
-  // Buka WhatsApp di Tab Baru / Aplikasi WhatsApp
-  window.open(waUrl, "_blank");
+  isSendingOrder = true;
+  sendWhatsappBtn.disabled = true;
 
-  showToast(" Mengalihkan ke WhatsApp...");
+  // === KURANGI STOK DI DATABASE ===
+  const err = await reserveStockForOrder();
+
+  isSendingOrder = false;
+  sendWhatsappBtn.disabled = false;
+
+  if (err) {
+    if (waWindow) waWindow.close();
+    await loadStockFromDB();
+    renderProducts();
+
+    if (err.message && err.message.includes("STOK_TIDAK_CUKUP")) {
+      showToast("⚠️ Maaf, stok sebagian menu baru saja habis. Silakan cek keranjang.");
+      closeCheckoutModal();
+      // sesuaikan keranjang dengan stok terbaru
+      cart = cart.filter(item => {
+        const stock = getAvailableStock(item.id, item.variant);
+        if (stock <= 0) return false;
+        if (item.qty > stock) item.qty = stock;
+        return true;
+      });
+      saveCartToStorage();
+      updateCartUI();
+      renderProducts();
+      if (cart.length > 0) openCartModal();
+    } else {
+      showToast("⚠️ Gagal memproses pesanan: " + err.message);
+    }
+    return;
+  }
+
+  // Stok sudah berkurang -> kirim ke WhatsApp
+  if (waWindow) {
+    waWindow.location.href = waUrl;
+  } else {
+    window.location.href = waUrl; // fallback jika popup diblokir
+  }
+
+  // Kosongkan keranjang
+  cart = [];
+  saveCartToStorage();
+  closeCheckoutModal();
+  updateCartUI();
+  await loadStockFromDB();
+  renderProducts();
+
+  showToast("✅ Pesanan dikirim, mengalihkan ke WhatsApp...");
 }
 
 /* --------------------------------------------------------------------------
@@ -1070,6 +1168,11 @@ async function authenticateAdmin() {
 
   const { data, error } = await db.rpc("admin_check_pin", { p_pin: enteredPin });
 
+  if (error && error.message && error.message.includes("TERLALU_BANYAK_PERCOBAAN")) {
+    showToast("⚠️ Terlalu banyak percobaan. Coba lagi beberapa menit lagi.");
+    return;
+  }
+
   if (!error && data === true) {
     adminPinValue = enteredPin;
     isAdminLoggedIn = true;
@@ -1095,25 +1198,22 @@ function closeAdminStockModal() {
   document.body.style.overflow = "";
 }
 
-function updateVariantStock(productId, variantName, delta) {
-  const product = PRODUCTS.find(p => p.id === productId);
-  if (!product) return;
+/**
+ * Tambah / kurangi stok (tombol + dan -). Dihitung di database.
+ */
+async function updateVariantStock(productId, variantName, delta) {
+  const newStock = await adjustStockInDB(productId, variantName, delta);
+  if (newStock === null) return;
 
-  if (product.variants && product.variants.length > 0) {
-    const v = product.variants.find(vItem => vItem.name === variantName);
-    if (v) {
-      v.stock = Math.max(0, (v.stock || 0) + delta);
-    }
-  } else {
-    product.stock = Math.max(0, (product.stock || 0) + delta);
-  }
-
-  pushStock(productId, variantName);
+  applyStockRow({ product_id: productId, variant: variantName || "", stock: newStock });
   renderAdminStockModal();
   renderProducts();
 }
 
-function setVariantStock(productId, variantName, newStockVal) {
+/**
+ * Isi stok manual lewat kolom angka
+ */
+async function setVariantStock(productId, variantName, newStockVal) {
   const product = PRODUCTS.find(p => p.id === productId);
   if (!product) return;
 
@@ -1126,11 +1226,15 @@ function setVariantStock(productId, variantName, newStockVal) {
     product.stock = val;
   }
 
-  pushStock(productId, variantName);
+  await pushStock(productId, variantName);
+  renderAdminStockModal();
   renderProducts();
 }
 
-function toggleVariantAvailability(productId, variantName) {
+/**
+ * Tombol Tersedia / Habis
+ */
+async function toggleVariantAvailability(productId, variantName) {
   const product = PRODUCTS.find(p => p.id === productId);
   if (!product) return;
 
@@ -1143,26 +1247,42 @@ function toggleVariantAvailability(productId, variantName) {
     product.stock = product.stock > 0 ? 0 : 20;
   }
 
-  pushStock(productId, variantName);
+  await pushStock(productId, variantName);
   renderAdminStockModal();
   renderProducts();
 }
 
+/**
+ * Reset semua stok ke jumlah awal (sekali kirim ke database)
+ */
 async function resetAllStockToDefault() {
   if (!confirm("Apakah Anda yakin ingin mengembalikan semua stok ke jumlah awal (default)?")) return;
 
-  PRODUCTS = JSON.parse(JSON.stringify(INITIAL_PRODUCTS));
+  const defaults = JSON.parse(JSON.stringify(INITIAL_PRODUCTS));
+  const items = [];
 
-  for (const p of PRODUCTS) {
+  defaults.forEach(p => {
     if (p.variants && p.variants.length > 0) {
-      for (const v of p.variants) {
-        await pushStock(p.id, v.name);
-      }
+      p.variants.forEach(v => {
+        items.push({ product_id: p.id, variant: v.name, stock: v.stock });
+      });
     } else {
-      await pushStock(p.id, "");
+      items.push({ product_id: p.id, variant: "", stock: p.stock || 0 });
     }
+  });
+
+  const { data, error } = await db.rpc("admin_bulk_set_stock", {
+    p_pin: adminPinValue,
+    p_items: items
+  });
+
+  if (handleAdminError(error)) return;
+  if (data !== true) {
+    showToast("⚠️ PIN admin tidak valid. Silakan login ulang.");
+    return;
   }
 
+  PRODUCTS = defaults;
   renderAdminStockModal();
   renderProducts();
   showToast("🔄 Stok berhasil direset ke default!");
