@@ -9,8 +9,8 @@
 const ADMIN_WHATSAPP = "6285188428223";
 
 // Isi dari Supabase: Project Settings > API
-const SUPABASE_URL = "https://XXXX.supabase.co";
-const SUPABASE_ANON_KEY = "ISI_ANON_PUBLIC_KEY"; // pakai anon key, BUKAN service_role
+const SUPABASE_URL = "https://zrhqhvfogcpqcvraftzn.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpyaHFodmZvZ2NwcWN2cmFmdHpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTEyOTM5MzAsImV4cCI6MjEwNjg2OTkzMH0.od3IPgXXimlLM79UzcfEh8105PVq4VBo5apCaKYhpdw"; // pakai anon key, BUKAN service_role
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let adminPinValue = ""; // PIN hanya disimpan di memori setelah login berhasil
 
